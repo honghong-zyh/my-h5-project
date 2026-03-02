@@ -1,0 +1,8 @@
+{
+  "name": "Copy of FastMoss Mobile AI",
+  "description": "A comprehensive TikTok data analysis mobile H5 application with AI-powered insights, market trends, and shop diagnosis tools.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
