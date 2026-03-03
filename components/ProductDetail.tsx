@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { ICONS } from '../constants';
@@ -26,7 +25,9 @@ import {
   ExternalLink,
   Download,
   Filter,
-  UserCheck
+  UserCheck,
+  ArrowUpDown,
+  ChevronDown
 } from 'lucide-react';
 import { 
   LineChart, 
@@ -68,6 +69,33 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ productId, onBack }) => {
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isFavorited, setIsFavorited] = useState(false);
+  
+  const [isSkuModalOpen, setIsSkuModalOpen] = useState(false);
+  const [selectedSkuSize, setSelectedSkuSize] = useState<'14' | '42'>('14');
+  const [adFlowFilter, setAdFlowFilter] = useState<'ad' | 'noAd'>('ad');
+  
+  // 顶部精简吸顶栏状态（商品大卡片移出视口后显示）
+  const [showCompactHeader, setShowCompactHeader] = useState(false);
+  const [showStickyPanel, setShowStickyPanel] = useState(false);
+  const [stickyPanelHeight, setStickyPanelHeight] = useState(0);
+  const headerRef = useRef<HTMLElement>(null);
+  const [headerHeight, setHeaderHeight] = useState(52);
+  const productInfoRef = useRef<HTMLDivElement>(null);
+  const stickyPanelRef = useRef<HTMLDivElement>(null);
+  const lastScrollTop = useRef(0);
+  const lastScrollDirection = useRef<'up' | 'down'>('down');
+
+  useEffect(() => {
+    const el = headerRef.current;
+    if (!el) return;
+
+    const update = () => setHeaderHeight(el.offsetHeight || 52);
+    update();
+
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const posterImageUrl = useMemo(() => {
     return posterTemplateUrl;
@@ -76,6 +104,87 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ productId, onBack }) => {
   const shareText = useMemo(() => {
     return '【FastMoss 爆款预警】🔥 TikTok 惊现黑马！销量全线飘红，大批达人全速进场！正势如破竹抢占榜首，🔗 https://fastmoss.com/s/xxxxxx 复制消息查看详情。';
   }, []);
+  
+  // 监听滚动：当商品大卡片整体滚出 fixed Header 下方时，显示精简吸顶栏；上滑显示吸顶面板，下滑隐藏
+  useEffect(() => {
+    const HEADER_HEIGHT = 52;
+    const triggerEl = productInfoRef.current;
+    if (!triggerEl) return;
+
+    const findScrollableAncestor = (el: HTMLElement | null): HTMLElement | null => {
+      let cur: HTMLElement | null = el;
+      while (cur) {
+        const style = window.getComputedStyle(cur);
+        const overflowY = style.overflowY;
+        if ((overflowY === 'auto' || overflowY === 'scroll') && cur.scrollHeight > cur.clientHeight) {
+          return cur;
+        }
+        cur = cur.parentElement;
+      }
+      return null;
+    };
+
+    const scrollContainer = findScrollableAncestor(triggerEl);
+    const scroller: HTMLElement | Window = scrollContainer ?? window;
+
+    const getScrollTop = () => {
+      return scroller === window
+        ? window.scrollY || document.documentElement.scrollTop || 0
+        : (scroller as HTMLElement).scrollTop;
+    };
+
+    lastScrollTop.current = getScrollTop();
+
+    let rafId = 0;
+    const handleScroll = () => {
+      if (rafId) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = 0;
+        const rect = triggerEl.getBoundingClientRect();
+
+        const isPastThreshold = rect.bottom <= HEADER_HEIGHT;
+
+        const currentTop = getScrollTop();
+        const delta = currentTop - lastScrollTop.current;
+        lastScrollTop.current = currentTop;
+
+        if (!isPastThreshold) {
+          setShowCompactHeader(false);
+          setShowStickyPanel(false);
+          return;
+        }
+
+        // 上滑/下滑保持一致：过阈值后始终显示紧凑 Header + 吸顶面板
+        setShowCompactHeader(true);
+        setShowStickyPanel(true);
+      });
+    };
+
+    (scroller === window ? window : (scroller as HTMLElement)).addEventListener('scroll', handleScroll, { passive: true } as any);
+    handleScroll();
+    return () => {
+      (scroller === window ? window : (scroller as HTMLElement)).removeEventListener('scroll', handleScroll as any);
+      if (rafId) window.cancelAnimationFrame(rafId);
+    };
+  }, []);
+
+  // 计算吸顶面板高度，用于占位防跳动
+  useEffect(() => {
+    if (!showStickyPanel) {
+      setStickyPanelHeight(0);
+      return;
+    }
+
+    const el = stickyPanelRef.current;
+    if (!el) return;
+
+    const update = () => setStickyPanelHeight(el.offsetHeight);
+    update();
+
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [showStickyPanel]);
   
   // New states for Influencer List View and Export
   const [isAllInfluencersOpen, setIsAllInfluencersOpen] = useState(false);
@@ -87,6 +196,8 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ productId, onBack }) => {
   const [influencerCategoryOpen, setInfluencerCategoryOpen] = useState(false);
   const [influencerFollowers, setInfluencerFollowers] = useState<'all' | '<10w' | '10-50w' | '50-100w' | '100-500w' | '500-1000w' | '>1000w'>('all');
   const [influencerFollowersOpen, setInfluencerFollowersOpen] = useState(false);
+  const [influencerSortMetric, setInfluencerSortMetric] = useState<'sales' | 'gmv' | 'followers'>('sales');
+  const [influencerSortMenuOpen, setInfluencerSortMenuOpen] = useState(false);
   const [influencerSortOrder, setInfluencerSortOrder] = useState<'desc' | 'asc'>('desc');
   
   // 下拉框位置状态
@@ -107,8 +218,22 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ productId, onBack }) => {
   // 投流分析模块状态 - 多选指标（最多2个）
   const [adMetricsSelected, setAdMetricsSelected] = useState<string[]>(['adCost', 'playCount']);
   const [isAdVideosOpen, setIsAdVideosOpen] = useState(false);
-  const [adVideoSortType, setAdVideoSortType] = useState<'publishDesc' | 'publishAsc' | 'costDesc' | 'costAsc'>('costDesc');
-  const [adVideoSortDropdownOpen, setAdVideoSortDropdownOpen] = useState(false);
+  const [adVideoSortMetric, setAdVideoSortMetric] = useState<'cost' | 'playCount' | 'roas' | 'ctr' | 'publishDate' | 'sales'>('cost');
+  const [adVideoSortOrder, setAdVideoSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [adVideoFlowFilter, setAdVideoFlowFilter] = useState<'ad' | 'noAd'>('ad');
+  const [adVideoSortMenuOpen, setAdVideoSortMenuOpen] = useState(false);
+
+  const adVideoAllowedSortMetrics = useMemo(() => {
+    return adVideoFlowFilter === 'ad'
+      ? (['publishDate', 'cost', 'playCount', 'roas'] as const)
+      : (['publishDate', 'sales', 'playCount'] as const);
+  }, [adVideoFlowFilter]);
+
+  useEffect(() => {
+    if (!adVideoAllowedSortMetrics.includes(adVideoSortMetric as any)) {
+      setAdVideoSortMetric('publishDate');
+    }
+  }, [adVideoAllowedSortMetrics, adVideoSortMetric]);
   
   // 关联视频模块状态
   const [relatedVideoFilter, setRelatedVideoFilter] = useState<'all' | 'ad' | 'noAd'>('all');
@@ -118,7 +243,9 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ productId, onBack }) => {
   
   // 关联直播模块状态
   const [isRelatedLivesOpen, setIsRelatedLivesOpen] = useState(false);
-  const [relatedLiveSortType, setRelatedLiveSortType] = useState<'salesDesc' | 'salesAsc' | 'followersDesc' | 'followersAsc' | 'viewersDesc' | 'viewersAsc'>('salesDesc');
+  const [relatedLiveSortMetric, setRelatedLiveSortMetric] = useState<'sales' | 'followers' | 'viewers'>('sales');
+  const [relatedLiveSortOrder, setRelatedLiveSortOrder] = useState<'desc' | 'asc'>('desc');
+  const [relatedLiveSortMenuOpen, setRelatedLiveSortMenuOpen] = useState(false);
   
   // 评论模块状态
   const [isCommentListOpen, setIsCommentListOpen] = useState(false);
@@ -171,11 +298,19 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ productId, onBack }) => {
 
   // 投流视频数据
   const adVideosData = [
-    { id: 1, cover: 'https://picsum.photos/seed/ad1/120/160', title: 'Trả lời @Nippon37E1 Giày bả...', source: 'shop.tiktok.com', cost: 'Rp16.80万', playCount: '16.80万', publishDate: '2025/11/5' },
-    { id: 2, cover: 'https://picsum.photos/seed/ad2/120/160', title: '新品上架 限时优惠中...', source: 'shop.tiktok.com', cost: 'Rp12.50万', playCount: '25.30万', publishDate: '2025/11/3' },
-    { id: 3, cover: 'https://picsum.photos/seed/ad3/120/160', title: '爆款推荐 必买清单...', source: 'shop.tiktok.com', cost: 'Rp8.90万', playCount: '18.60万', publishDate: '2025/11/1' },
-    { id: 4, cover: 'https://picsum.photos/seed/ad4/120/160', title: '双11特惠 不容错过...', source: 'shop.tiktok.com', cost: 'Rp22.10万', playCount: '32.40万', publishDate: '2025/10/28' },
-    { id: 5, cover: 'https://picsum.photos/seed/ad5/120/160', title: '好物分享 超值好价...', source: 'shop.tiktok.com', cost: 'Rp5.60万', playCount: '9.80万', publishDate: '2025/10/25' },
+    { id: 1, cover: 'https://picsum.photos/seed/ad1/120/160', title: 'Trả lời @Nippon37E1 Giày bả...', source: 'shop.tiktok.com', cost: 'Rp16.80万', playCount: '16.80万', publishDate: '2025/11/5', roas: '6.25', ctr: '3.2%', sales: '12.5w' },
+    { id: 2, cover: 'https://picsum.photos/seed/ad2/120/160', title: '新品上架 限时优惠中...', source: 'shop.tiktok.com', cost: 'Rp12.50万', playCount: '25.30万', publishDate: '2025/11/3', roas: '5.10', ctr: '2.4%', sales: '4.1w' },
+    { id: 3, cover: 'https://picsum.photos/seed/ad3/120/160', title: '爆款推荐 必买清单...', source: 'shop.tiktok.com', cost: 'Rp8.90万', playCount: '18.60万', publishDate: '2025/11/1', roas: '4.85', ctr: '1.9%', sales: '2.8w' },
+    { id: 4, cover: 'https://picsum.photos/seed/ad4/120/160', title: '双11特惠 不容错过...', source: 'shop.tiktok.com', cost: 'Rp22.10万', playCount: '32.40万', publishDate: '2025/10/28', roas: '7.02', ctr: '3.8%', sales: '6.9w' },
+    { id: 5, cover: 'https://picsum.photos/seed/ad5/120/160', title: '好物分享 超值好价...', source: 'shop.tiktok.com', cost: 'Rp5.60万', playCount: '9.80万', publishDate: '2025/10/25', roas: '3.66', ctr: '1.2%', sales: '1.6w' },
+  ];
+
+  const noAdVideosData = [
+    { id: 101, cover: 'https://picsum.photos/seed/noad1/120/160', title: '自然流量爆款 分享技巧...', source: 'shop.tiktok.com', cost: 'Rp0', playCount: '12.20万', publishDate: '2025/11/4', roas: '-', ctr: '2.0%', sales: '1.8w' },
+    { id: 102, cover: 'https://picsum.photos/seed/noad2/120/160', title: '新品测评 真实反馈...', source: 'shop.tiktok.com', cost: 'Rp0', playCount: '9.80万', publishDate: '2025/11/2', roas: '-', ctr: '1.5%', sales: '1.1w' },
+    { id: 103, cover: 'https://picsum.photos/seed/noad3/120/160', title: '热门趋势 跟拍模板...', source: 'shop.tiktok.com', cost: 'Rp0', playCount: '15.60万', publishDate: '2025/10/31', roas: '-', ctr: '2.6%', sales: '2.3w' },
+    { id: 104, cover: 'https://picsum.photos/seed/noad4/120/160', title: '达人同款 真实种草...', source: 'shop.tiktok.com', cost: 'Rp0', playCount: '8.40万', publishDate: '2025/10/27', roas: '-', ctr: '1.1%', sales: '0.8w' },
+    { id: 105, cover: 'https://picsum.photos/seed/noad5/120/160', title: '好物开箱 质感展示...', source: 'shop.tiktok.com', cost: 'Rp0', playCount: '10.10万', publishDate: '2025/10/24', roas: '-', ctr: '1.8%', sales: '1.4w' },
   ];
   
   // 关联视频数据
@@ -193,8 +328,7 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ productId, onBack }) => {
     { id: 'conversion', label: '成交分析' },
     { id: 'sku', label: 'SKU分析' },
     { id: 'influencer', label: '达人分析' },
-    { id: 'adFlow', label: '投流分析' },
-    { id: 'relatedVideos', label: '关联视频' },
+    { id: 'relatedVideos', label: '关联视频', target: 'adflow' },
     { id: 'relatedLives', label: '关联直播' },
     { id: 'comments', label: '评论' },
     { id: 'similarProducts', label: '相似品' },
@@ -247,7 +381,9 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ productId, onBack }) => {
   }, [followerDistributionData]);
 
   const scrollToSection = (id: string) => {
-    const element = document.getElementById(id);
+    const tab = tabs.find(t => t.id === id);
+    const targetId = tab?.target || id;
+    const element = document.getElementById(targetId);
     if (element) {
       const headerOffset = 100;
       const elementPosition = element.getBoundingClientRect().top;
@@ -333,7 +469,15 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ productId, onBack }) => {
           </div>
         </div>
         <p className="text-[10px] font-black text-gray-200 truncate w-full text-center px-1">{name}</p>
-        <p className="text-[9px] font-bold text-[#FE2062] mb-2">{stats}</p>
+        <div className="flex flex-col items-center text-[9px] font-bold text-[#FE2062] mb-2">
+          {stats.includes(',') ? (
+            stats.split(',').map((part, i) => (
+              <span key={i}>{part.trim()}</span>
+            ))
+          ) : (
+            <span>{stats}</span>
+          )}
+        </div>
         <div className={`w-full bg-gray-900 ${height} rounded-t-lg border-x border-t border-gray-800 flex items-center justify-center`}>
           <span className="text-lg font-black text-gray-700">{rank}</span>
         </div>
@@ -360,54 +504,102 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ productId, onBack }) => {
       </header>
 
       <div className="bg-gray-900 px-4 py-2 flex items-center gap-2 border-b border-gray-800 shadow-sm shrink-0">
-        {/* 达人分类下拉 */}
         <div className="relative shrink-0">
-          <button 
-            ref={categoryButtonRef}
-            onClick={() => {
-              if (categoryButtonRef.current) {
-                setCategoryButtonRect(categoryButtonRef.current.getBoundingClientRect());
-              }
-              setInfluencerCategoryOpen(!influencerCategoryOpen);
-              setInfluencerFollowersOpen(false);
-            }}
-            className="px-3 py-1.5 bg-gray-800 text-[11px] font-bold text-gray-300 rounded-lg flex items-center gap-1"
+          <button
+            type="button"
+            onClick={() => setInfluencerCategoryOpen(!influencerCategoryOpen)}
+            className="flex items-center justify-between gap-3 min-w-[96px] px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-200 text-[12px] font-bold"
           >
-            {influencerCategory === 'all' ? '达人分类' : influencerCategory === 'video' ? '视频达人' : '直播达人'}
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400">
-              <path d="M6 9l6 6 6-6" />
-            </svg>
+            <span>{influencerCategory === 'all' ? '全部' : influencerCategory === 'video' ? '视频达人' : '直播达人'}</span>
+            <ChevronDown size={14} className={`text-gray-400 transition-transform ${influencerCategoryOpen ? 'rotate-180' : ''}`} />
+          </button>
+
+          {influencerCategoryOpen && (
+            <>
+              <div className="fixed inset-0 z-[60]" onClick={() => setInfluencerCategoryOpen(false)} />
+              <div className="absolute left-0 mt-2 w-40 bg-white rounded-xl shadow-2xl z-[65] overflow-hidden">
+                {([
+                  { id: 'all', label: '全部' },
+                  { id: 'video', label: '视频达人' },
+                  { id: 'live', label: '直播达人' },
+                ] as const).map((opt) => {
+                  const active = influencerCategory === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => {
+                        setInfluencerCategory(opt.id);
+                        setInfluencerCategoryOpen(false);
+                      }}
+                      className={`w-full px-4 py-3 text-left text-[13px] font-bold flex items-center justify-between ${
+                        active ? 'bg-gray-100 text-gray-900' : 'text-gray-800 hover:bg-gray-100'
+                      }`}
+                    >
+                      <span>{opt.label}</span>
+                      {active && <Check size={16} className="text-gray-900" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="flex-1" />
+
+        <div className="relative flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => setInfluencerSortMenuOpen(!influencerSortMenuOpen)}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-300 text-[12px] font-bold"
+          >
+            <span className="text-gray-400">排序：</span>
+            <span className="text-gray-100">
+              {influencerSortMetric === 'sales' ? '总销量' : influencerSortMetric === 'gmv' ? '销售额' : '粉丝数'}
+            </span>
+            <span className="text-[10px] text-gray-200">{influencerSortOrder === 'desc' ? '↓' : '↑'}</span>
+            <ChevronDown size={14} className="text-gray-400" />
+          </button>
+
+          {influencerSortMenuOpen && (
+            <>
+              <div className="fixed inset-0 z-[60]" onClick={() => setInfluencerSortMenuOpen(false)} />
+              <div className="absolute right-0 mt-2 w-36 bg-gray-900 border border-gray-800 rounded-xl overflow-hidden shadow-xl z-[65]">
+                {([
+                  { id: 'sales', label: '总销量' },
+                  { id: 'gmv', label: '销售额' },
+                  { id: 'followers', label: '粉丝数' },
+                ] as const).map((opt) => {
+                  const active = influencerSortMetric === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => {
+                        setInfluencerSortMetric(opt.id);
+                        setInfluencerSortMenuOpen(false);
+                      }}
+                      className={`w-full px-4 py-2.5 text-left text-[12px] font-bold transition-all ${
+                        active ? 'bg-[#FE2062]/15 text-[#FE2062]' : 'text-gray-200 hover:bg-gray-800'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setInfluencerSortOrder(influencerSortOrder === 'desc' ? 'asc' : 'desc')}
+            className="w-9 h-9 rounded-lg bg-gray-800 border border-gray-700 flex items-center justify-center text-gray-300 active:opacity-70"
+          >
+            <ArrowUpDown size={16} />
           </button>
         </div>
-        
-        {/* 粉丝数下拉 */}
-        <div className="relative shrink-0">
-          <button 
-            ref={followersButtonRef}
-            onClick={() => {
-              if (followersButtonRef.current) {
-                setFollowersButtonRect(followersButtonRef.current.getBoundingClientRect());
-              }
-              setInfluencerFollowersOpen(!influencerFollowersOpen);
-              setInfluencerCategoryOpen(false);
-            }}
-            className="px-3 py-1.5 bg-gray-800 text-[11px] font-bold text-gray-300 rounded-lg flex items-center gap-1"
-          >
-            {influencerFollowers === 'all' ? '粉丝数' : influencerFollowers === '<10w' ? '<10万' : influencerFollowers === '10-50w' ? '10-50万' : influencerFollowers === '50-100w' ? '50-100万' : influencerFollowers === '100-500w' ? '100-500万' : influencerFollowers === '500-1000w' ? '500-1000万' : '>1000万'}
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400">
-              <path d="M6 9l6 6 6-6" />
-            </svg>
-          </button>
-        </div>
-        
-        {/* 销量贡献排序按钮 */}
-        <button 
-          onClick={() => setInfluencerSortOrder(influencerSortOrder === 'desc' ? 'asc' : 'desc')}
-          className="px-3 py-1.5 bg-[#FE2062] text-[11px] font-bold text-white rounded-lg flex items-center gap-1 shrink-0"
-        >
-          销量贡献排序
-          <span className="text-[10px]">{influencerSortOrder === 'desc' ? '↓' : '↑'}</span>
-        </button>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -450,17 +642,88 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ productId, onBack }) => {
     <>
       <div className="flex flex-col min-h-screen bg-gray-950">
       {/* 1. Header */}
-      <header className="sticky top-0 z-50 bg-gray-900/80 backdrop-blur-md px-4 py-3 flex items-center justify-between border-b border-gray-800">
-        <div className="flex items-center gap-1 text-gray-100 cursor-pointer active:opacity-70 transition-opacity" onClick={onBack}>
-          <ChevronLeft size={24} />
-          <span className="font-bold text-base">FastMoss·商品详情</span>
+      <header ref={headerRef} className={`fixed top-0 left-0 right-0 z-50 bg-[#0b0e14]/80 backdrop-blur-md px-4 border-b border-gray-800 ${showCompactHeader ? 'py-2' : 'py-3'}`}
+              style={{ maxWidth: '448px', margin: '0 auto' }}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1 text-gray-100 cursor-pointer active:opacity-70 transition-opacity" onClick={onBack}>
+            <ChevronLeft size={24} />
+            <span className={`font-bold transition-all duration-200 ${showCompactHeader ? 'text-sm opacity-100 translate-y-0' : 'text-base opacity-100 translate-y-0'}`}>
+              FastMoss·商品详情
+            </span>
+          </div>
+
+          <div className="w-6" />
         </div>
-        <div className="w-6" />
+
+        {/* 精简吸顶栏（缩略图 + 单行标题） */}
+        {showCompactHeader && (
+          <div className="mt-2 flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg overflow-hidden bg-gray-900 flex-shrink-0 border border-gray-800">
+              <img
+                src={`https://picsum.photos/seed/product-${productId ?? 1}/300/300`}
+                alt="Product"
+                className="w-full h-full object-cover"
+              />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="text-gray-100 text-[13px] font-bold truncate">
+                [SAIZ BESAR] ANAS Gincu Baldu (SEMI-MATTE) with Sweet Almond Oil...
+              </h3>
+            </div>
+          </div>
+        )}
       </header>
 
-      <div className="flex-1 overflow-y-auto pb-32">
-        {/* Basic Info Area - Height compressed by approx 1/3 */}
-        <div className="px-4 pt-3 space-y-3">
+      {/* Header 下方吸顶面板：上滑出现，下滑消失 */}
+      {!isAllInfluencersOpen && (
+        <div
+          ref={stickyPanelRef}
+          className={`fixed left-0 right-0 z-[55] transition-all duration-200 ease-out ${
+            showStickyPanel ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2 pointer-events-none'
+          }`}
+          style={{ top: headerHeight, maxWidth: '448px', margin: '0 auto' }}
+        >
+          <div className="bg-[#0b0e14]/90 backdrop-blur-md border-b border-gray-900 shadow-lg">
+            <div className="flex items-center gap-6 overflow-x-auto scrollbar-hide px-4 border-b border-gray-900">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => scrollToSection(tab.id)}
+                  className={`shrink-0 py-2.5 text-[13px] font-black transition-all relative whitespace-nowrap ${
+                    activeTab === tab.id ? 'text-[#FE2062]' : 'text-gray-400'
+                  }`}
+                >
+                  {tab.label}
+                  {activeTab === tab.id && <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#FE2062] rounded-full" />}
+                </button>
+              ))}
+            </div>
+            <div className="p-3">
+              <div className="flex items-center gap-1 bg-[#141824] p-1 rounded-xl border border-gray-800/80">
+                {timeOptions.map((opt) => (
+                  <button
+                    key={opt.id}
+                    onClick={() => setTimeRange(opt.id)}
+                    className={`flex-1 py-2 text-[12px] font-black rounded-lg transition-all ${
+                      timeRange === opt.id
+                        ? 'bg-[#FE2062] text-white shadow-lg shadow-[#FE2062]/30'
+                        : 'text-gray-400 bg-transparent'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="flex-1 pb-32" style={{ paddingTop: headerHeight }}>
+        {/* 占位空间 - 防止吸顶面板出现时内容跳动 */}
+        {!isAllInfluencersOpen && showStickyPanel && <div style={{ height: stickyPanelHeight }} />}
+        {/* 商品信息模块（用于触发吸顶：完全看不到时才出现吸顶层） */}
+        <div className="px-4 space-y-3 transition-all duration-300 pt-3">
           <div className="flex items-center justify-between">
             <span className="text-[9px] text-gray-500 font-bold">数据更新时间：2025-12-08 16:10</span>
             <div className="flex items-center gap-2">
@@ -473,17 +736,20 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ productId, onBack }) => {
             </div>
           </div>
 
-          <div className="bg-gray-900 rounded-xl p-3 border border-gray-800 shadow-xl">
+          <div ref={productInfoRef} className="rounded-xl p-3 shadow-xl transition-all duration-300 bg-gray-900 border border-gray-800">
             <div className="flex gap-3">
               <div className="w-[90px] shrink-0 space-y-1.5">
                 <div className="relative aspect-square rounded-lg overflow-hidden bg-gray-950 border border-gray-800">
-                  <img src={`https://picsum.photos/seed/prod-info-${productId}/300/300`} alt="Product" className="w-full h-full object-cover" />
+                  <img src={`https://picsum.photos/seed/product-${productId ?? 1}/300/300`} alt="Product" className="w-full h-full object-cover" />
                   <div className="absolute bottom-0 left-0 right-0 bg-black/60 backdrop-blur-sm px-1.5 py-0.5 text-center">
                     <p className="text-[10px] font-black text-white">RM6.50</p>
                     <p className="text-[8px] text-gray-400 font-bold line-through">RM49.90</p>
                   </div>
                 </div>
-                <button className="w-full py-1 border border-gray-800 rounded-md text-[9px] font-black text-gray-300 active:bg-gray-800">
+                <button 
+                  onClick={() => setIsSkuModalOpen(true)}
+                  className="w-full py-1 border border-gray-800 rounded-md text-[9px] font-black text-gray-300 bg-gray-800 active:bg-gray-700 transition-all duration-300 active:scale-95"
+                >
                   SKU详情
                 </button>
               </div>
@@ -492,11 +758,11 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ productId, onBack }) => {
                   [SAIZ BESAR] ANAS Gincu Baldu (SEMI-MATTE) with Sweet Almond Oil...
                 </h2>
                 <div className="flex items-center gap-2">
-                   <div className="flex items-center gap-1">
-                     <span className="text-[10px]">🇲🇾</span>
-                     <span className="text-[10px] text-gray-400 font-bold">马来</span>
-                   </div>
-                   <span className="px-1.5 py-0.5 bg-[#FE2062]/10 text-[#FE2062] text-[9px] font-black rounded border border-[#FE2062]/20">美妆个护</span>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px]">🇲🇾</span>
+                    <span className="text-[10px] text-gray-400 font-bold">马来</span>
+                  </div>
+                  <span className="px-1.5 py-0.5 bg-[#FE2062]/10 text-[#FE2062] text-[9px] font-black rounded border border-[#FE2062]/20">美妆个护</span>
                 </div>
                 <div className="space-y-0.5">
                   <p className="text-[10px] text-gray-400 font-bold">佣金比例: <span className="text-gray-200">10%</span></p>
@@ -505,7 +771,7 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ productId, onBack }) => {
                     <span>体验分:</span>
                     <div className="flex items-center gap-0.5 ml-1">
                       {[1,2,3,4].map(i => <Star key={i} size={9} fill="#FACC15" className="text-[#FACC15]" />)}
-                      <Star size={9} fill="#FACC15" className="text-[#FACC15] opacity-50" />
+                      <Star size={9} fill="#FACC15" className="text-[#FACC15]" opacity="0.5" />
                       <span className="text-gray-200 ml-0.5">4.8</span>
                     </div>
                   </div>
@@ -529,32 +795,127 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ productId, onBack }) => {
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="sticky top-[52px] z-40 bg-gray-950 mt-4 border-t border-gray-900 shadow-md">
-          <div className="flex items-center gap-6 overflow-x-auto scrollbar-hide px-4 border-b border-gray-900">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => scrollToSection(tab.id)}
-                className={`shrink-0 py-3 text-[13px] font-black transition-all relative whitespace-nowrap ${
-                  activeTab === tab.id ? 'text-[#FE2062]' : 'text-gray-500'
-                }`}
-              >
-                {tab.label}
-                {activeTab === tab.id && <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#FE2062] rounded-full" />}
-              </button>
-            ))}
+        {/* SKU 详情弹窗（黑色背景） */}
+        {isSkuModalOpen && (
+          <div
+            className="fixed inset-0 z-[70] bg-black/60 flex items-end justify-center px-4 pb-6"
+            onClick={() => setIsSkuModalOpen(false)}
+          >
+            <div
+              className="w-full max-w-md bg-[#0b0e14] rounded-2xl shadow-2xl overflow-hidden border border-gray-800 animate-in slide-in-from-bottom duration-200"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="px-5 py-4 flex items-center justify-between border-b border-gray-800">
+                <h3 className="text-base font-black text-gray-100">SKU详情</h3>
+                <button onClick={() => setIsSkuModalOpen(false)} className="text-gray-500 p-1 hover:text-gray-300">
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="px-5 pb-5">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-xl overflow-hidden bg-gray-900 border border-gray-800 flex-shrink-0">
+                    <img
+                      src={`https://picsum.photos/seed/sku-modal-${productId ?? 1}/120/120`}
+                      alt="SKU"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[15px] font-medium text-gray-100 leading-snug">
+                      DRDENT Purple Teeth Whitening Strips - 7/21 Whitening Sessions - Safe for Enamel - Non Sensitive Teeth Whitening - Peroxide-Free
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 flex items-center gap-8 text-[12px]">
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-500">价格:</span>
+                    <span className="text-gray-200">$14.01</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-500">库存:</span>
+                    <span className="text-gray-200">0</span>
+                  </div>
+                </div>
+
+                <div className="mt-5 flex items-start gap-3">
+                  <div className="pt-2 text-[12px] text-gray-500">Size:</div>
+                  <div className="flex-1 space-y-3">
+                    <button
+                      onClick={() => setSelectedSkuSize('14')}
+                      className={`w-full rounded-xl px-4 py-3 flex items-center justify-center gap-2 border transition-colors ${
+                        selectedSkuSize === '14'
+                          ? 'border-blue-400 border-dashed bg-blue-500/10 text-blue-300'
+                          : 'border-gray-800 bg-[#0b0e14] text-gray-200'
+                      }`}
+                    >
+                      <img
+                        src={`https://picsum.photos/seed/sku-opt-14/40/40`}
+                        alt="14"
+                        className="w-5 h-5 rounded object-cover"
+                      />
+                      <span className="text-[13px]">
+                        14 strips (7 sessions)
+                      </span>
+                    </button>
+
+                    <button
+                      onClick={() => setSelectedSkuSize('42')}
+                      className={`w-full rounded-xl px-4 py-3 flex items-center justify-center gap-2 border transition-colors ${
+                        selectedSkuSize === '42'
+                          ? 'border-blue-400 border-dashed bg-blue-500/10 text-blue-300'
+                          : 'border-gray-800 bg-[#0b0e14] text-gray-200'
+                      }`}
+                    >
+                      <img
+                        src={`https://picsum.photos/seed/sku-opt-42/40/40`}
+                        alt="42"
+                        className="w-5 h-5 rounded object-cover"
+                      />
+                      <span className="text-[13px]">42 strips (21 sessions)</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
-          <div className="p-3">
-            <div className="flex items-center gap-1 bg-gray-900 p-0.5 rounded-lg border border-gray-800">
-              {timeOptions.map((opt) => (
-                <button key={opt.id} onClick={() => setTimeRange(opt.id)} className={`flex-1 py-1.5 text-[10px] font-black rounded-md transition-all ${timeRange === opt.id ? 'bg-[#FE2062] text-white shadow-lg' : 'text-gray-500'}`}>
-                  {opt.label}
+        )}
+
+        {/* Tabs：正常状态 sticky；吸顶面板显示时隐藏，避免重复 */}
+        {!showStickyPanel && (
+          <div className="sticky top-[52px] z-40 bg-gray-950 mt-3 border-t border-gray-900 shadow-md">
+            <div className="flex items-center gap-6 overflow-x-auto scrollbar-hide px-4 border-b border-gray-900">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => scrollToSection(tab.id)}
+                  className={`shrink-0 py-3 text-[13px] font-black transition-all relative whitespace-nowrap ${
+                    activeTab === tab.id ? 'text-[#FE2062]' : 'text-gray-500'
+                  }`}
+                >
+                  {tab.label}
+                  {activeTab === tab.id && <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#FE2062] rounded-full" />}
                 </button>
               ))}
             </div>
+            <div className="p-3">
+              <div className="flex items-center gap-1 bg-gray-900 p-0.5 rounded-lg border border-gray-800">
+                {timeOptions.map((opt) => (
+                  <button
+                    key={opt.id}
+                    onClick={() => setTimeRange(opt.id)}
+                    className={`flex-1 py-1.5 text-[10px] font-black rounded-md transition-all ${
+                      timeRange === opt.id ? 'bg-[#FE2062] text-white shadow-lg' : 'text-gray-500'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Trend Module */}
         <section id="trend" className="p-4 space-y-4">
@@ -959,88 +1320,123 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ productId, onBack }) => {
           </div>
           
           <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
-             <p className="text-[11px] text-gray-500 font-bold mb-4">近7天销量 Top3达人推荐</p>
-             <div className="flex items-end justify-center gap-2 mb-6">
-                <PodiumInfluencer rank={2} name="Maya_Beauty" stats="4.1w" avatar="https://picsum.photos/seed/inf-2/80/80" height="h-12" />
-                <PodiumInfluencer rank={1} name="Anas_Official" stats="12.5w" avatar="https://picsum.photos/seed/inf-1/80/80" height="h-20" />
-                <PodiumInfluencer rank={3} name="Skincare_Lover" stats="2.8w" avatar="https://picsum.photos/seed/inf-3/80/80" height="h-8" />
+             <p className="text-[11px] text-gray-500 font-bold mb-4">达人粉丝数量分布</p>
+             <div className="flex items-center">
+               <div className="w-32 h-32 shrink-0">
+                 <ResponsiveContainer width="100%" height="100%">
+                   <PieChart>
+                     <Pie
+                       data={followerDistributionData}
+                       innerRadius={35}
+                       outerRadius={55}
+                       paddingAngle={2}
+                       dataKey="count"
+                       nameKey="range"
+                     >
+                       {followerDistributionData.map((entry, index) => (
+                         <Cell key={`cell-${index}`} fill={entry.color} />
+                       ))}
+                     </Pie>
+                     <Tooltip
+                       contentStyle={{ backgroundColor: '#111827', border: '1px solid #374151', borderRadius: '8px' }}
+                       formatter={(value: any, name: any) => {
+                         const count = Number(value);
+                         const pct = followerDistributionTotal > 0 ? ((count / followerDistributionTotal) * 100).toFixed(2) : '0.00';
+                         return [`${count}人 (${pct}%)`, name];
+                       }}
+                     />
+                   </PieChart>
+                 </ResponsiveContainer>
+               </div>
+               <div className="flex-1 pl-4 space-y-1.5">
+                 {followerDistributionData.map((d, i) => {
+                   const pct = followerDistributionTotal > 0 ? ((d.count / followerDistributionTotal) * 100).toFixed(2) : '0.00';
+                   return (
+                     <div key={i} className="flex items-center justify-between">
+                       <div className="flex items-center gap-1.5 min-w-0">
+                         <div className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: d.color }} />
+                         <span className="text-[10px] text-gray-500 font-bold truncate">{d.range}</span>
+                       </div>
+                       <div className="flex items-center gap-2 ml-2 shrink-0">
+                         <span className="text-[10px] font-black text-gray-300">{d.count}人</span>
+                         <span className="text-[10px] font-black text-gray-500">{pct}%</span>
+                       </div>
+                     </div>
+                   );
+                 })}
+               </div>
              </div>
              
-             <div className="pt-4 border-t border-gray-800">
-               <p className="text-[11px] text-gray-500 font-bold mb-4">达人粉丝数量分布</p>
-               <div className="flex items-center">
-                 <div className="w-32 h-32 shrink-0">
-                   <ResponsiveContainer width="100%" height="100%">
-                     <PieChart>
-                       <Pie
-                         data={followerDistributionData}
-                         innerRadius={35}
-                         outerRadius={55}
-                         paddingAngle={2}
-                         dataKey="count"
-                         nameKey="range"
-                       >
-                         {followerDistributionData.map((entry, index) => (
-                           <Cell key={`cell-${index}`} fill={entry.color} />
-                         ))}
-                       </Pie>
-                       <Tooltip
-                         contentStyle={{ backgroundColor: '#111827', border: '1px solid #374151', borderRadius: '8px' }}
-                         formatter={(value: any, name: any) => {
-                           const count = Number(value);
-                           const pct = followerDistributionTotal > 0 ? ((count / followerDistributionTotal) * 100).toFixed(2) : '0.00';
-                           return [`${count}人 (${pct}%)`, name];
-                         }}
-                       />
-                     </PieChart>
-                   </ResponsiveContainer>
-                 </div>
-                 <div className="flex-1 pl-4 space-y-1.5">
-                   {followerDistributionData.map((d, i) => {
-                     const pct = followerDistributionTotal > 0 ? ((d.count / followerDistributionTotal) * 100).toFixed(2) : '0.00';
-                     return (
-                       <div key={i} className="flex items-center justify-between">
-                         <div className="flex items-center gap-1.5 min-w-0">
-                           <div className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: d.color }} />
-                           <span className="text-[10px] text-gray-500 font-bold truncate">{d.range}</span>
-                         </div>
-                         <div className="flex items-center gap-2 ml-2 shrink-0">
-                           <span className="text-[10px] font-black text-gray-300">{d.count}人</span>
-                           <span className="text-[10px] font-black text-gray-500">{pct}%</span>
-                         </div>
-                       </div>
-                     );
-                   })}
-                 </div>
+             <div className="pt-4 border-t border-gray-800 mt-4">
+               <p className="text-[11px] text-gray-500 font-bold mb-4">近7天销量Top3达人榜单</p>
+               <div className="flex items-end justify-center gap-2 mb-6">
+                 <PodiumInfluencer rank={2} name="Maya_Beauty" stats="销量4.1w" avatar="https://picsum.photos/seed/inf-2/80/80" height="h-12" />
+                 <PodiumInfluencer rank={1} name="Anas_Official" stats="销量12.5w" avatar="https://picsum.photos/seed/inf-1/80/80" height="h-20" />
+                 <PodiumInfluencer rank={3} name="Skincare_Lover" stats="销量2.8w" avatar="https://picsum.photos/seed/inf-3/80/80" height="h-8" />
                </div>
              </div>
           </div>
         </section>
 
-        {/* 投流分析模块 */}
+        {/* 关联视频模块 */}
         <section id="adflow" className="p-4 space-y-4 border-t border-gray-900">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="w-1 h-4 bg-[#FE2062] rounded-full" />
-              <h3 className="text-sm font-black text-gray-100">投流分析</h3>
+              <h3 className="text-sm font-black text-gray-100">关联视频</h3>
             </div>
             <button 
               onClick={() => setIsAdVideosOpen(true)}
               className="text-[10px] text-[#FE2062] font-black flex items-center gap-0.5 active:opacity-70"
             >
-              查看投流视频 <ChevronRight size={12} />
+              查看视频 <ChevronRight size={12} />
             </button>
           </div>
+          
+          {/* 筛选按钮 */}
+          <div className="flex gap-2">
+            {[
+              { id: 'ad', label: '投流' },
+              { id: 'noAd', label: '未投流' },
+            ].map((opt) => (
+              <button
+                key={opt.id}
+                onClick={() => {
+                  setAdFlowFilter(opt.id as any);
+                  if (opt.id === 'noAd') {
+                    setAdMetricsSelected(['salesCount', 'salesAmount']);
+                  } else {
+                    setAdMetricsSelected(['adCost', 'playCount']);
+                  }
+                }}
+                className={`px-3 py-1.5 text-[10px] font-bold rounded-md transition-all ${
+                  adFlowFilter === opt.id ? 'bg-[#FE2062] text-white' : 'bg-gray-800 text-gray-400'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          
           <div className="grid grid-cols-3 gap-2">
             {[
-              { id: 'adCost', label: '广告投放消耗', value: 'Rp4496', selectable: true, color: '#FE2062' },
-              { id: 'playCount', label: '播放量', value: '8.97万', selectable: true, color: '#3B82F6' },
-              { id: 'salesCount', label: '销量', value: '3000', selectable: true, color: '#22C55E' },
-              { id: 'salesAmount', label: '销售额', value: 'Rp2.81万', selectable: true, color: '#F59E0B' },
-              { id: 'adMaterial', label: '广告素材量', value: '1908个', selectable: false },
-              { id: 'adRatio', label: '广告成交占比', value: '40%', selectable: false },
-              { id: 'roas', label: 'ROAS', value: '6.25', selectable: false },
-            ].map((m) => {
+              ...(adFlowFilter === 'ad' ? [
+                { id: 'adCost', label: '广告投放消耗', value: 'Rp4496', selectable: true, color: '#FE2062' },
+                { id: 'playCount', label: '播放量', value: '8.97万', selectable: true, color: '#3B82F6' },
+                { id: 'salesCount', label: '销量', value: '3000', selectable: true, color: '#22C55E' },
+                { id: 'salesAmount', label: '销售额', value: 'Rp2.81万', selectable: true, color: '#F59E0B' },
+                { id: 'adMaterial', label: '广告素材量', value: '1908个', selectable: false, color: '#6B7280' },
+                { id: 'roas', label: 'ROAS', value: '6.25', selectable: false, color: '#6B7280' },
+              ] : [
+                { id: 'salesCount', label: '销量', value: '3000', selectable: true, color: '#22C55E' },
+                { id: 'salesAmount', label: '销售额', value: 'Rp2.81万', selectable: true, color: '#F59E0B' },
+                { id: 'playCount', label: '播放量', value: '8.97万', selectable: true, color: '#3B82F6' },
+                { id: 'likeCount', label: '点赞数', value: '1.2万', selectable: true, color: '#EF4444' },
+                { id: 'commentCount', label: '评论数', value: '856', selectable: true, color: '#8B5CF6' },
+                { id: 'interactionRate', label: '互动率', value: '3.2%', selectable: true, color: '#06B6D4' },
+              ])
+            ]
+            .map((m) => {
               const isSelected = adMetricsSelected.includes(m.id);
               const canSelect = m.selectable && (isSelected || adMetricsSelected.length < 2);
               return (
@@ -1068,10 +1464,19 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ productId, onBack }) => {
               <div className="flex justify-center gap-4 mb-2 text-[10px]">
                 {adMetricsSelected.map((id, idx) => {
                   const metric = [
-                    { id: 'adCost', label: '广告投放消耗', color: '#FE2062' },
-                    { id: 'playCount', label: '播放量', color: '#3B82F6' },
-                    { id: 'salesCount', label: '销量', color: '#22C55E' },
-                    { id: 'salesAmount', label: '销售额', color: '#F59E0B' },
+                    ...(adFlowFilter === 'ad' ? [
+                      { id: 'adCost', label: '广告投放消耗', color: '#FE2062' },
+                      { id: 'playCount', label: '播放量', color: '#3B82F6' },
+                      { id: 'salesCount', label: '销量', color: '#22C55E' },
+                      { id: 'salesAmount', label: '销售额', color: '#F59E0B' },
+                    ] : [
+                      { id: 'salesCount', label: '销量', color: '#22C55E' },
+                      { id: 'salesAmount', label: '销售额', color: '#F59E0B' },
+                      { id: 'playCount', label: '播放量', color: '#3B82F6' },
+                      { id: 'likeCount', label: '点赞数', color: '#EF4444' },
+                      { id: 'commentCount', label: '评论数', color: '#8B5CF6' },
+                      { id: 'interactionRate', label: '互动率', color: '#06B6D4' },
+                    ])
                   ].find(m => m.id === id);
                   return metric ? (
                     <div key={id} className="flex items-center gap-1">
@@ -1087,91 +1492,40 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ productId, onBack }) => {
                   <XAxis dataKey="date" hide />
                   <YAxis hide />
                   <Tooltip contentStyle={{ backgroundColor: '#111827', border: 'none', borderRadius: '8px' }} />
-                  {adMetricsSelected.includes('adCost') && <Line type="monotone" dataKey="sales" name="广告投放消耗" stroke="#FE2062" strokeWidth={3} dot={false} />}
-                  {adMetricsSelected.includes('playCount') && <Line type="monotone" dataKey="gmv" name="播放量" stroke="#3B82F6" strokeWidth={3} dot={false} />}
-                  {adMetricsSelected.includes('salesCount') && <Line type="monotone" dataKey="sales" name="销量" stroke="#22C55E" strokeWidth={3} dot={false} />}
-                  {adMetricsSelected.includes('salesAmount') && <Line type="monotone" dataKey="gmv" name="销售额" stroke="#F59E0B" strokeWidth={3} dot={false} />}
+                  {adFlowFilter === 'ad' && (
+                    <>
+                      {adMetricsSelected.includes('adCost') && <Line type="monotone" dataKey="sales" name="广告投放消耗" stroke="#FE2062" strokeWidth={3} dot={false} />}
+                      {adMetricsSelected.includes('playCount') && <Line type="monotone" dataKey="gmv" name="播放量" stroke="#3B82F6" strokeWidth={3} dot={false} />}
+                      {adMetricsSelected.includes('salesCount') && <Line type="monotone" dataKey="sales" name="销量" stroke="#22C55E" strokeWidth={3} dot={false} />}
+                      {adMetricsSelected.includes('salesAmount') && <Line type="monotone" dataKey="gmv" name="销售额" stroke="#F59E0B" strokeWidth={3} dot={false} />}
+                    </>
+                  )}
+                  {adFlowFilter === 'noAd' && (
+                    <>
+                      {adMetricsSelected.includes('salesCount') && <Line type="monotone" dataKey="sales" name="销量" stroke="#22C55E" strokeWidth={3} dot={false} />}
+                      {adMetricsSelected.includes('salesAmount') && <Line type="monotone" dataKey="gmv" name="销售额" stroke="#F59E0B" strokeWidth={3} dot={false} />}
+                      {adMetricsSelected.includes('playCount') && <Line type="monotone" dataKey="gmv" name="播放量" stroke="#3B82F6" strokeWidth={3} dot={false} />}
+                      {adMetricsSelected.includes('likeCount') && <Line type="monotone" dataKey="sales" name="点赞数" stroke="#EF4444" strokeWidth={3} dot={false} />}
+                      {adMetricsSelected.includes('commentCount') && <Line type="monotone" dataKey="gmv" name="评论数" stroke="#8B5CF6" strokeWidth={3} dot={false} />}
+                      {adMetricsSelected.includes('interactionRate') && <Line type="monotone" dataKey="sales" name="互动率" stroke="#06B6D4" strokeWidth={3} dot={false} />}
+                    </>
+                  )}
                 </LineChart>
               </ResponsiveContainer>
             </div>
           )}
-        </section>
 
-        {/* 关联视频模块 - 与投流分析同级 */}
-        <section id="relatedVideos" className="p-4 space-y-4 border-t border-gray-900">
-          <div className="flex items-center gap-2">
-            <div className="w-1 h-4 bg-[#FE2062] rounded-full" />
-            <h3 className="text-sm font-black text-gray-100">关联视频</h3>
-          </div>
-          
-          {/* 筛选按钮 + 更多入口 同一行 */}
-          <div className="flex items-center justify-between">
-            <div className="flex gap-2">
-              {[
-                { id: 'all', label: '全部' },
-                { id: 'ad', label: '投流' },
-                { id: 'noAd', label: '未投流' },
-              ].map((opt) => (
-                <button
-                  key={opt.id}
-                  onClick={() => setRelatedVideoFilter(opt.id as any)}
-                  className={`px-3 py-1.5 text-[10px] font-bold rounded-md transition-all ${
-                    relatedVideoFilter === opt.id ? 'bg-[#FE2062] text-white' : 'bg-gray-800 text-gray-400'
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
+          <div className="pt-4 border-t border-gray-800 mt-4">
+            <p className="text-[11px] text-gray-500 font-bold mb-4">近7天GMV Top3 视频榜单</p>
+            <div className="flex items-end justify-center gap-2 mb-6">
+              <PodiumInfluencer rank={2} name="Maya_Beauty" stats="播放量16.8万,销量12.5w" avatar="https://picsum.photos/seed/inf-2/80/80" height="h-12" />
+              <PodiumInfluencer rank={1} name="Anas_Official" stats="播放量16.8万,销量12.5w" avatar="https://picsum.photos/seed/inf-1/80/80" height="h-20" />
+              <PodiumInfluencer rank={3} name="Skincare_Lover" stats="播放量16.8万,销量12.5w" avatar="https://picsum.photos/seed/inf-3/80/80" height="h-8" />
             </div>
-            <button 
-              onClick={() => setIsRelatedVideosOpen(true)}
-              className="text-[10px] text-[#FE2062] font-black flex items-center gap-0.5 active:opacity-70"
-            >
-              查看视频 <ChevronRight size={12} />
-            </button>
-          </div>
-          
-          {/* 视频列表 - 只展示3个 */}
-          <div className="space-y-3">
-            {relatedVideosData
-              .filter(v => relatedVideoFilter === 'all' ? true : relatedVideoFilter === 'ad' ? v.isAd : !v.isAd)
-              .slice(0, 3)
-              .map((video, index) => (
-              <div key={video.id} className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
-                <div className="flex gap-3 mb-3">
-                  <div className="relative w-16 h-20 rounded-lg overflow-hidden shrink-0">
-                    <img src={video.cover} alt="" className="w-full h-full object-cover" />
-                    <div className="absolute top-1 left-1 bg-[#FE2062] text-white text-[10px] font-black px-1.5 py-0.5 rounded">
-                      {String(index + 1).padStart(2, '0')}
-                    </div>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="text-[13px] font-bold text-gray-100 truncate mb-1">{video.title}</h4>
-                    <div className="flex items-center gap-1 text-[11px] text-gray-500">
-                      <div className="w-4 h-4 rounded-full bg-gray-700" />
-                      <span>{video.source}</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="grid grid-cols-3 gap-4 text-center">
-                  <div>
-                    <p className="text-[14px] font-black text-gray-100">{video.sales}</p>
-                    <p className="text-[10px] text-gray-500 font-bold">销量</p>
-                  </div>
-                  <div>
-                    <p className="text-[14px] font-black text-gray-100">{video.playCount}</p>
-                    <p className="text-[10px] text-gray-500 font-bold">播放量</p>
-                  </div>
-                  <div>
-                    <p className="text-[14px] font-black text-gray-100">{video.publishDate}</p>
-                    <p className="text-[10px] text-gray-500 font-bold">发布时间</p>
-                  </div>
-                </div>
-              </div>
-            ))}
           </div>
         </section>
 
+        
         {/* 关联直播模块 - 与关联视频同级 */}
         <section id="relatedLives" className="p-4 space-y-4 border-t border-gray-900">
           <div className="flex items-center justify-between">
@@ -1186,45 +1540,31 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ productId, onBack }) => {
               查看直播 <ChevronRight size={12} />
             </button>
           </div>
-          
-          {/* 直播列表 - 只展示3个 */}
-          <div className="space-y-3">
-            {relatedLivesData
-              .slice(0, 3)
-              .map((live, index) => (
-              <div key={live.id} className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
-                <div className="flex gap-3 mb-3">
-                  <div className="relative w-16 h-20 rounded-lg overflow-hidden shrink-0">
-                    <img src={live.cover} alt="" className="w-full h-full object-cover" />
-                    <div className="absolute top-1 left-1 bg-[#FE2062] text-white text-[10px] font-black px-1.5 py-0.5 rounded">
-                      {String(index + 1).padStart(2, '0')}
-                    </div>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="text-[13px] font-bold text-gray-100 truncate mb-1">{live.title}</h4>
-                    <div className="flex items-center gap-2 text-[11px] text-gray-500">
-                      <div className="w-4 h-4 rounded-full bg-gray-700" />
-                      <span>{live.hostId}</span>
-                      <span>{live.country}</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="grid grid-cols-3 gap-4 text-center">
-                  <div>
-                    <p className="text-[14px] font-black text-[#3B82F6]">{live.followers}</p>
-                    <p className="text-[10px] text-gray-500 font-bold">粉丝数</p>
-                  </div>
-                  <div>
-                    <p className="text-[14px] font-black text-gray-100">{live.viewers}</p>
-                    <p className="text-[10px] text-gray-500 font-bold">累计观看人数</p>
-                  </div>
-                  <div>
-                    <p className="text-[14px] font-black text-[#FE2062]">{live.totalSales}</p>
-                    <p className="text-[10px] text-gray-500 font-bold">直播总销量</p>
-                  </div>
-                </div>
-              </div>
-            ))}
+
+          {/* 直播数据概览 */}
+          <div className="grid grid-cols-3 gap-2">
+            <div className="bg-gray-900 border border-gray-800 p-3 rounded-xl relative">
+              <p className="text-sm font-black text-gray-200">128场</p>
+              <p className="text-[10px] text-gray-500 font-bold mt-1">直播总场次</p>
+            </div>
+            <div className="bg-gray-900 border border-gray-800 p-3 rounded-xl relative">
+              <p className="text-sm font-black text-gray-200">3.26万</p>
+              <p className="text-[10px] text-gray-500 font-bold mt-1">销量</p>
+            </div>
+            <div className="bg-gray-900 border border-gray-800 p-3 rounded-xl relative">
+              <p className="text-sm font-black text-gray-200">¥298.4万</p>
+              <p className="text-[10px] text-gray-500 font-bold mt-1">销售额</p>
+            </div>
+          </div>
+
+          {/* 近7天GMV Top3达人推荐 */}
+          <div className="pt-4 border-t border-gray-800 mt-4">
+            <p className="text-[11px] text-gray-500 font-bold mb-4">近7天GMV Top3直播榜单</p>
+            <div className="flex items-end justify-center gap-2 mb-6">
+              <PodiumInfluencer rank={2} name="Live_Star_A" stats="直播总销量8.9k" avatar="https://picsum.photos/seed/live-2/80/80" height="h-12" />
+              <PodiumInfluencer rank={1} name="Beauty_King" stats="直播总销量15.2k" avatar="https://picsum.photos/seed/live-1/80/80" height="h-20" />
+              <PodiumInfluencer rank={3} name="Fashion_Queen" stats="直播总销量6.3k" avatar="https://picsum.photos/seed/live-3/80/80" height="h-8" />
+            </div>
           </div>
         </section>
 
@@ -1417,47 +1757,129 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ productId, onBack }) => {
 
           {/* 筛选栏 */}
           <div className="px-4 py-3 border-b border-gray-800">
-            <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  if (adVideoSortType === 'costAsc') {
-                    setAdVideoSortType('costDesc');
-                  } else {
-                    setAdVideoSortType('costAsc');
-                  }
-                }}
-                className={`flex items-center gap-1 px-3 py-2 rounded-lg text-[12px] font-bold transition-all ${
-                  adVideoSortType === 'costDesc' || adVideoSortType === 'costAsc' 
-                    ? 'bg-[#FE2062] text-white' 
-                    : 'bg-gray-800 text-gray-300'
-                }`}
-              >
-                预计消耗
-                <span className="text-[10px]">{adVideoSortType === 'costDesc' ? '↓' : '↑'}</span>
-              </button>
-              <button
-                onClick={() => {
-                  if (adVideoSortType === 'publishAsc') {
-                    setAdVideoSortType('publishDesc');
-                  } else {
-                    setAdVideoSortType('publishAsc');
-                  }
-                }}
-                className={`flex items-center gap-1 px-3 py-2 rounded-lg text-[12px] font-bold transition-all ${
-                  adVideoSortType === 'publishDesc' || adVideoSortType === 'publishAsc' 
-                    ? 'bg-[#FE2062] text-white' 
-                    : 'bg-gray-800 text-gray-300'
-                }`}
-              >
-                发布时间
-                <span className="text-[10px]">{adVideoSortType === 'publishDesc' ? '↓' : '↑'}</span>
-              </button>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center bg-gray-800 rounded-lg p-0.5">
+                <button
+                  onClick={() => setAdVideoFlowFilter('ad')}
+                  className={`px-3 py-2 rounded-md text-[12px] font-bold transition-all ${
+                    adVideoFlowFilter === 'ad' ? 'bg-[#FE2062] text-white' : 'text-gray-300'
+                  }`}
+                >
+                  投流
+                </button>
+                <button
+                  onClick={() => setAdVideoFlowFilter('noAd')}
+                  className={`px-3 py-2 rounded-md text-[12px] font-bold transition-all ${
+                    adVideoFlowFilter === 'noAd' ? 'bg-[#FE2062] text-white' : 'text-gray-300'
+                  }`}
+                >
+                  未投流
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <button
+                    onClick={() => setAdVideoSortMenuOpen(!adVideoSortMenuOpen)}
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-300 text-[12px] font-bold"
+                  >
+                    <span className="text-gray-400">排序：</span>
+                    <span className="text-gray-100">
+                      {adVideoSortMetric === 'publishDate'
+                        ? '发布时间'
+                        : adVideoSortMetric === 'cost'
+                          ? '预计消耗'
+                          : adVideoSortMetric === 'playCount'
+                            ? '播放量'
+                            : adVideoSortMetric === 'roas'
+                              ? 'ROAS'
+                              : adVideoSortMetric === 'sales'
+                                ? '销量'
+                                : '点击率'}
+                    </span>
+                    <span className="text-[10px] text-gray-200">
+                      {adVideoSortOrder === 'desc' ? '↓' : '↑'}
+                    </span>
+                    <ChevronDown size={14} className="text-gray-400" />
+                  </button>
+
+                  {adVideoSortMenuOpen && (
+                    <div className="absolute right-0 mt-2 w-40 bg-gray-900 border border-gray-800 rounded-xl overflow-hidden shadow-xl z-20">
+                      {(adVideoFlowFilter === 'ad'
+                        ? ([
+                            { id: 'publishDate', label: '发布时间' },
+                            { id: 'cost', label: '预计消耗' },
+                            { id: 'playCount', label: '播放量' },
+                            { id: 'roas', label: 'ROAS' },
+                          ] as const)
+                        : ([
+                            { id: 'publishDate', label: '发布时间' },
+                            { id: 'sales', label: '销量' },
+                            { id: 'playCount', label: '播放量' },
+                          ] as const)
+                      ).map((opt) => {
+                        const active = adVideoSortMetric === (opt.id as any);
+                        return (
+                          <button
+                            key={opt.id}
+                            onClick={() => {
+                              setAdVideoSortMetric(opt.id as any);
+                              setAdVideoSortMenuOpen(false);
+                            }}
+                            className={`w-full px-4 py-2.5 text-left text-[12px] font-bold transition-all ${
+                              active ? 'bg-[#FE2062]/15 text-[#FE2062]' : 'text-gray-200 hover:bg-gray-800'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setAdVideoSortOrder(adVideoSortOrder === 'desc' ? 'asc' : 'desc')}
+                  className="w-9 h-9 rounded-lg bg-gray-800 border border-gray-700 flex items-center justify-center text-gray-300 active:opacity-70 relative z-[45]"
+                >
+                  <ArrowUpDown size={16} />
+                </button>
+              </div>
             </div>
           </div>
 
           {/* 视频列表 */}
           <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-            {adVideosData.map((video, index) => (
+            {(adVideoFlowFilter === 'ad' ? adVideosData : noAdVideosData)
+              .slice()
+              .sort((a, b) => {
+                const parseNumber = (s: string) => Number(String(s).replace(/[^0-9.]/g, ''));
+                const parsePercent = (s: string) => Number(String(s).replace(/[^0-9.]/g, ''));
+
+                const getValue = (v: any) => {
+                  if (adVideoSortMetric === 'cost') return parseNumber(v.cost);
+                  if (adVideoSortMetric === 'playCount') return parseNumber(v.playCount);
+                  if (adVideoSortMetric === 'roas') {
+                    const n = parseNumber(v.roas);
+                    return Number.isFinite(n) ? n : -1;
+                  }
+                  if (adVideoSortMetric === 'sales') {
+                    return parseNumber(v.sales ?? '0');
+                  }
+                  if (adVideoSortMetric === 'ctr') {
+                    const n = parsePercent(v.ctr ?? '0');
+                    return Number.isFinite(n) ? n : 0;
+                  }
+                  return new Date(v.publishDate).getTime();
+                };
+
+                const aVal = getValue(a);
+                const bVal = getValue(b);
+                const diff = bVal - aVal;
+                return adVideoSortOrder === 'desc' ? diff : -diff;
+              })
+              .map((video, index) => (
               <div key={video.id} className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
                 {/* 视频信息 */}
                 <div className="flex gap-3 mb-4">
@@ -1473,23 +1895,37 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ productId, onBack }) => {
                       <div className="w-4 h-4 rounded-full bg-gray-700" />
                       <span>{video.source}</span>
                     </div>
+                    <p className="text-[11px] text-gray-500 font-bold mt-1">{video.publishDate}</p>
                   </div>
                 </div>
                 {/* 数据指标 */}
-                <div className="grid grid-cols-3 gap-4 text-center">
-                  <div>
-                    <p className="text-[14px] font-black text-[#FE2062]">{video.cost}</p>
-                    <p className="text-[10px] text-gray-500 font-bold mt-0.5">预计消耗</p>
+                {adVideoFlowFilter === 'noAd' ? (
+                  <div className="grid grid-cols-2 gap-4 text-center">
+                    <div>
+                      <p className="text-[14px] font-black text-gray-100">{video.sales}</p>
+                      <p className="text-[10px] text-gray-500 font-bold mt-0.5">销量</p>
+                    </div>
+                    <div>
+                      <p className="text-[14px] font-black text-[#FE2062]">{video.playCount}</p>
+                      <p className="text-[10px] text-gray-500 font-bold mt-0.5">播放量</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-[14px] font-black text-gray-100">{video.playCount}</p>
-                    <p className="text-[10px] text-gray-500 font-bold mt-0.5">播放量</p>
+                ) : (
+                  <div className="grid grid-cols-3 gap-4 text-center">
+                    <div>
+                      <p className="text-[14px] font-black text-[#FE2062]">{video.cost}</p>
+                      <p className="text-[10px] text-gray-500 font-bold mt-0.5">预计消耗</p>
+                    </div>
+                    <div>
+                      <p className="text-[14px] font-black text-gray-100">{video.playCount}</p>
+                      <p className="text-[10px] text-gray-500 font-bold mt-0.5">播放量</p>
+                    </div>
+                    <div>
+                      <p className="text-[14px] font-black text-gray-100">{video.roas}</p>
+                      <p className="text-[10px] text-gray-500 font-bold mt-0.5">ROAS</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-[14px] font-black text-gray-100">{video.publishDate}</p>
-                    <p className="text-[10px] text-gray-500 font-bold mt-0.5">发布时间</p>
-                  </div>
-                </div>
+                )}
               </div>
             ))}
           </div>
@@ -1626,74 +2062,82 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ productId, onBack }) => {
 
           {/* 筛选栏 */}
           <div className="px-4 py-3 border-b border-gray-800">
-            <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  if (relatedLiveSortType === 'salesAsc') {
-                    setRelatedLiveSortType('salesDesc');
-                  } else {
-                    setRelatedLiveSortType('salesAsc');
-                  }
-                }}
-                className={`flex items-center gap-1 px-3 py-2 rounded-lg text-[12px] font-bold transition-all ${
-                  relatedLiveSortType === 'salesDesc' || relatedLiveSortType === 'salesAsc' 
-                    ? 'bg-[#FE2062] text-white' 
-                    : 'bg-gray-800 text-gray-300'
-                }`}
-              >
-                直播总销量
-                <span className="text-[10px]">{relatedLiveSortType === 'salesDesc' ? '↓' : '↑'}</span>
-              </button>
-              <button
-                onClick={() => {
-                  if (relatedLiveSortType === 'followersAsc') {
-                    setRelatedLiveSortType('followersDesc');
-                  } else {
-                    setRelatedLiveSortType('followersAsc');
-                  }
-                }}
-                className={`flex items-center gap-1 px-3 py-2 rounded-lg text-[12px] font-bold transition-all ${
-                  relatedLiveSortType === 'followersDesc' || relatedLiveSortType === 'followersAsc' 
-                    ? 'bg-[#FE2062] text-white' 
-                    : 'bg-gray-800 text-gray-300'
-                }`}
-              >
-                粉丝数
-                <span className="text-[10px]">{relatedLiveSortType === 'followersDesc' ? '↓' : '↑'}</span>
-              </button>
-              <button
-                onClick={() => {
-                  if (relatedLiveSortType === 'viewersAsc') {
-                    setRelatedLiveSortType('viewersDesc');
-                  } else {
-                    setRelatedLiveSortType('viewersAsc');
-                  }
-                }}
-                className={`flex items-center gap-1 px-3 py-2 rounded-lg text-[12px] font-bold transition-all ${
-                  relatedLiveSortType === 'viewersDesc' || relatedLiveSortType === 'viewersAsc' 
-                    ? 'bg-[#FE2062] text-white' 
-                    : 'bg-gray-800 text-gray-300'
-                }`}
-              >
-                累计观看人数
-                <span className="text-[10px]">{relatedLiveSortType === 'viewersDesc' ? '↓' : '↑'}</span>
-              </button>
+            <div className="flex items-center gap-2">
+              <div className="flex-1" />
+
+              <div className="relative flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setRelatedLiveSortMenuOpen(!relatedLiveSortMenuOpen)}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-300 text-[12px] font-bold"
+                >
+                  <span className="text-gray-400">排序：</span>
+                  <span className="text-gray-100">
+                    {relatedLiveSortMetric === 'sales' ? '直播总销量' : relatedLiveSortMetric === 'followers' ? '粉丝数' : '累计观看人数'}
+                  </span>
+                  <span className="text-[10px] text-gray-200">{relatedLiveSortOrder === 'desc' ? '↓' : '↑'}</span>
+                  <ChevronDown size={14} className="text-gray-400" />
+                </button>
+
+                {relatedLiveSortMenuOpen && (
+                  <>
+                    <div className="fixed inset-0 z-[60]" onClick={() => setRelatedLiveSortMenuOpen(false)} />
+                    <div className="absolute right-0 mt-2 w-40 bg-gray-900 border border-gray-800 rounded-xl overflow-hidden shadow-xl z-[65]">
+                      {([
+                        { id: 'sales', label: '直播总销量' },
+                        { id: 'followers', label: '粉丝数' },
+                        { id: 'viewers', label: '累计观看人数' },
+                      ] as const).map((opt) => {
+                        const active = relatedLiveSortMetric === opt.id;
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => {
+                              setRelatedLiveSortMetric(opt.id);
+                              setRelatedLiveSortMenuOpen(false);
+                            }}
+                            className={`w-full px-4 py-2.5 text-left text-[12px] font-bold transition-all ${
+                              active ? 'bg-[#FE2062]/15 text-[#FE2062]' : 'text-gray-200 hover:bg-gray-800'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setRelatedLiveSortOrder(relatedLiveSortOrder === 'desc' ? 'asc' : 'desc')}
+                  className="w-9 h-9 rounded-lg bg-gray-800 border border-gray-700 flex items-center justify-center text-gray-300 active:opacity-70"
+                >
+                  <ArrowUpDown size={16} />
+                </button>
+              </div>
             </div>
           </div>
 
           {/* 直播列表 */}
           <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
             {[...relatedLivesData].sort((a, b) => {
-              if (relatedLiveSortType === 'salesDesc') return b.totalSales - a.totalSales;
-              if (relatedLiveSortType === 'salesAsc') return a.totalSales - b.totalSales;
-              const aFollowers = parseFloat(a.followers.replace('万', '')) * 10000;
-              const bFollowers = parseFloat(b.followers.replace('万', '')) * 10000;
-              if (relatedLiveSortType === 'followersDesc') return bFollowers - aFollowers;
-              if (relatedLiveSortType === 'followersAsc') return aFollowers - bFollowers;
-              const aViewers = parseFloat(a.viewers.replace('万', '')) * 10000;
-              const bViewers = parseFloat(b.viewers.replace('万', '')) * 10000;
-              if (relatedLiveSortType === 'viewersDesc') return bViewers - aViewers;
-              return aViewers - bViewers;
+              const parseWan = (s: string) => parseFloat(String(s).replace('万', '')) * 10000;
+              const aVal =
+                relatedLiveSortMetric === 'sales'
+                  ? a.totalSales
+                  : relatedLiveSortMetric === 'followers'
+                    ? parseWan(a.followers)
+                    : parseWan(a.viewers);
+              const bVal =
+                relatedLiveSortMetric === 'sales'
+                  ? b.totalSales
+                  : relatedLiveSortMetric === 'followers'
+                    ? parseWan(b.followers)
+                    : parseWan(b.viewers);
+              const diff = bVal - aVal;
+              return relatedLiveSortOrder === 'desc' ? diff : -diff;
             }).map((live, index) => (
               <div key={live.id} className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
                 {/* 直播信息 */}
