@@ -341,8 +341,6 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ productId, onBack }) => {
     { name: 'Default', color: '#58a6ff', salesPercent: 11.92, salesValue: '6.38万', amountPercent: 15.8, amountValue: '¥26.4万', stockPercent: 11.92, stockValue: '6.38万' },
     { name: 'Peach Mango - 20 Day Serving', color: '#f39c12', salesPercent: 8.3, salesValue: '6.38万', amountPercent: 10.2, amountValue: '¥17.0万', stockPercent: 8.3, stockValue: '6.38万' },
     { name: '其他', color: '#8b949e', salesPercent: 5.26, salesValue: '4.50万', amountPercent: 6.3, amountValue: '¥10.5万', stockPercent: 8.3, stockValue: '6.38万' },
-    { name: 'Berry Blast', color: '#a855f7', salesPercent: 3.2, salesValue: '2.74万', amountPercent: 2.8, amountValue: '¥4.7万', stockPercent: 3.5, stockValue: '0.45万' },
-    { name: 'Tropical Mix', color: '#22c55e', salesPercent: 2.1, salesValue: '1.80万', amountPercent: 1.9, amountValue: '¥3.2万', stockPercent: 4.2, stockValue: '0.54万' },
   ];
 
   const timeOptions = [
@@ -492,7 +490,7 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ productId, onBack }) => {
         <button onClick={() => setIsAllInfluencersOpen(false)} className="text-gray-400 p-1">
           <ChevronLeft size={24} />
         </button>
-        <h3 className="text-sm font-black text-gray-100">全部带货达人</h3>
+        <h3 className="text-sm font-black text-gray-100">带货达人（近7天）</h3>
         <div className="flex items-center gap-3">
           <button onClick={() => setIsShareModalOpen(true)} className="text-gray-400">
             <Share2 size={18} />
@@ -1748,7 +1746,7 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ productId, onBack }) => {
             <button onClick={() => setIsAdVideosOpen(false)} className="p-2 -ml-2">
               <ChevronLeft size={24} className="text-gray-200" />
             </button>
-            <h2 className="text-base font-black text-gray-100">投流视频</h2>
+            <h2 className="text-base font-black text-gray-100">投流视频（近7天）</h2>
             <div className="flex items-center gap-2">
               <Share2 size={20} className="text-gray-400" />
               <Download size={20} className="text-gray-400" />
@@ -2053,7 +2051,7 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ productId, onBack }) => {
             <button onClick={() => setIsRelatedLivesOpen(false)} className="p-2 -ml-2">
               <ChevronLeft size={24} className="text-gray-200" />
             </button>
-            <h2 className="text-base font-black text-gray-100">关联直播</h2>
+            <h2 className="text-base font-black text-gray-100">关联直播（近7天）</h2>
             <div className="flex items-center gap-2">
               <Share2 size={20} className="text-gray-400" />
               <Download size={20} className="text-gray-400" />
@@ -2186,7 +2184,7 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ productId, onBack }) => {
             <button onClick={() => setIsCommentListOpen(false)} className="p-2 -ml-2">
               <ChevronLeft size={24} className="text-gray-200" />
             </button>
-            <h2 className="text-base font-black text-gray-100">评论列表</h2>
+            <h2 className="text-base font-black text-gray-100">评论列表（近7天）</h2>
             <div className="w-8" />
           </div>
 
