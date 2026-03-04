@@ -2239,14 +2239,16 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ productId, onBack }) => {
       )}
 
       {/* Footer Share Button */}
-      <div className="fixed bottom-0 left-0 right-0 p-4 bg-gray-900/90 backdrop-blur-lg border-t border-gray-800 flex items-center justify-center gap-4 z-50 pb-safe">
-        <button 
-          onClick={() => setIsShareModalOpen(true)} 
-          className="w-full py-2 bg-[#FE2062] text-white text-sm font-black rounded-xl shadow-lg shadow-[#FE2062]/20 active:scale-95 transition-all flex items-center justify-center gap-2"
-        >
-          <Share2 size={16} /> 分享给好友
-        </button>
-      </div>
+      {!isAllInfluencersOpen && (
+        <div className="fixed bottom-0 left-0 right-0 p-4 bg-gray-900/90 backdrop-blur-lg border-t border-gray-800 flex items-center justify-center gap-4 z-50 pb-safe">
+          <button 
+            onClick={() => setIsShareModalOpen(true)} 
+            className="w-full py-2 bg-[#FE2062] text-white text-sm font-black rounded-xl shadow-lg shadow-[#FE2062]/20 active:scale-95 transition-all flex items-center justify-center gap-2"
+          >
+            <Share2 size={16} /> 分享给好友
+          </button>
+        </div>
+      )}
 
       {/* Export Email Modal */}
       {isExportModalOpen && (
